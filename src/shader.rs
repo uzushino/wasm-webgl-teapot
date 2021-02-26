@@ -1,10 +1,10 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
+use web_sys::{WebGlProgram, WebGl2RenderingContext, WebGlShader};
 
-pub fn vertex_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, JsValue> {
+pub fn vertex_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, JsValue> {
     let vert_shader = compile_shader(
         &context,
-        WebGlRenderingContext::VERTEX_SHADER,
+        WebGl2RenderingContext::VERTEX_SHADER,
         r#"
         precision mediump float;
 
@@ -25,10 +25,10 @@ pub fn vertex_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, JsV
     Ok(vert_shader)
 }
 
-pub fn fragment_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, JsValue> {
+pub fn fragment_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, JsValue> {
     let frag_shader = compile_shader(
         &context,
-        WebGlRenderingContext::FRAGMENT_SHADER,
+        WebGl2RenderingContext::FRAGMENT_SHADER,
         r#"
         precision mediump float;
 
@@ -44,7 +44,7 @@ pub fn fragment_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, J
 }
 
 pub fn create_program(
-    context: &WebGlRenderingContext,
+    context: &WebGl2RenderingContext,
     vert_shader: &WebGlShader,
     frag_shader: &WebGlShader,
 ) -> Result<WebGlProgram, String> {
@@ -57,7 +57,7 @@ pub fn create_program(
     context.link_program(&program);
 
     let check = context
-        .get_program_parameter(&program, WebGlRenderingContext::LINK_STATUS)
+        .get_program_parameter(&program, WebGl2RenderingContext::LINK_STATUS)
         .as_bool()
         .unwrap_or(false);
 
@@ -71,7 +71,7 @@ pub fn create_program(
 }
 
 pub fn compile_shader(
-    context: &WebGlRenderingContext,
+    context: &WebGl2RenderingContext,
     shader_type: u32,
     source: &str,
 ) -> Result<WebGlShader, String> {
@@ -82,7 +82,7 @@ pub fn compile_shader(
     context.compile_shader(&shader);
 
     let check = context
-        .get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS)
+        .get_shader_parameter(&shader, WebGl2RenderingContext::COMPILE_STATUS)
         .as_bool()
         .unwrap_or(false);
 
