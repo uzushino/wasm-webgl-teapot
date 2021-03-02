@@ -1,225 +1,285 @@
-use js_sys::JsString;
-use nalgebra_glm::TMat4;
 use wasm_bindgen::prelude::*;
-use web_sys::{WebGlBuffer, WebGlProgram, WebGl2RenderingContext, WebGlUniformLocation, WebGlTexture};
+use web_sys::{WebGlBuffer, WebGlRenderingContext, WebGlTexture, WebGlUniformLocation };
 
-use crate::buffer::{self, vertex_buffer};
-use crate::log;
-use crate::mesh;
+use crate::buffer;
+use crate::teapot;
+use crate::cube;
 use crate::shader;
 
 pub struct Scene<'a> {
-    context: &'a WebGl2RenderingContext,
-
-    perspective: TMat4<f32>,
-    mv: TMat4<f32>,
-
-    program: WebGlProgram,
+    context: &'a WebGlRenderingContext,
+    width: i32,
+    height: i32,
     
-    //vertex_buffer: Option<WebGlBuffer>,
-    //index_buffer: Option<WebGlBuffer>,
+    teapot_vertex: Option<WebGlBuffer>,
+    teapot_index: Option<WebGlBuffer>,
+    teapot_normal: Option<WebGlBuffer>,
+    cube_vertex: Option<WebGlBuffer>,
+    cube_index: Option<WebGlBuffer>,
+    cube_normal: Option<WebGlBuffer>,
 
-    position_loc: i32,
-    normal_loc: i32,
-    color_loc: i32,
+    position: i32,
+    normal: i32,
+    color: i32,
+
+    m: Option<WebGlUniformLocation>,
+    mvp: Option<WebGlUniformLocation>,
+    eye: Option<WebGlUniformLocation>,
+    cube: Option<WebGlUniformLocation>,
+
+    cube_texture: Option<WebGlTexture>,
 }
 
 impl<'a> Scene<'a> {
     pub fn new_with_context(
         width: i32,
         height: i32,
-        context: &'a WebGl2RenderingContext,
+        context: &'a WebGlRenderingContext,
     ) -> Result<Self, JsValue> {
         let vert_shader = shader::vertex_shader(context)?;
         let frag_shader = shader::fragment_shader(context)?;
         let program = shader::create_program(context, &vert_shader, &frag_shader)?;
+        context.use_program(Some(&program));
 
-        let position_loc = context.get_attrib_location(&program, "aVertexPosition");
-        let normal_loc = context.get_attrib_location(&program, "aVertexNormal");
-        let color_loc = context.get_attrib_location(&program, "aColor");
+        let position = context.get_attrib_location(&program, "aPosition");
+        let normal = context.get_attrib_location(&program, "aNormal");
+        let color = context.get_attrib_location(&program, "aColor");
+        
+        let m = context.get_uniform_location(&program, "uModelMatrix"); // Model行列
+        let mvp = context.get_uniform_location(&program, "uMVPMatrix"); // ModelViewProjection行列
+        let eye = context.get_uniform_location(&program, "eyePosition");
+        let cube = context.get_uniform_location(&program, "cubeTexture");
+
+        let cube_texture = Self::create_texture(context).ok();
 
         // カメラ
-        let fovy = 1.0472;
-        let aspect = (width / height) as f32;
-        let near = 0.1;
-        let far = 100.0;
-
         Ok(Scene {
+            width,
+            height,
+
             context,
-            program,
-            position_loc,
-            normal_loc,
-            color_loc,
 
-            // vertex_buffer: buffer::vertex_buffer(context).ok(),
-            // index_buffer: buffer::index_buffer(context).ok(),
+            position,
+            normal,
+            color,
 
-            perspective: nalgebra_glm::perspective(aspect, fovy, near, far),
-            mv: nalgebra_glm::identity(),
+            teapot_vertex: buffer::vertex_buffer(context, teapot::VERTEX).ok(),
+            teapot_index: buffer::index_buffer(context, teapot::INDEX).ok(),
+            teapot_normal: buffer::vertex_buffer(context, teapot::NORMAL).ok(),
+
+            cube_vertex: buffer::vertex_buffer(context, cube::VERTEX).ok(),
+            cube_index: buffer::index_buffer(context, cube::INDEX).ok(),
+            cube_normal: buffer::vertex_buffer(context, cube::NORMAL).ok(),
+          
+            m,
+            mvp,
+            eye,
+            cube,
+
+            cube_texture: cube_texture,
         })
     }
 
     pub fn render(&mut self) -> Result<(), JsValue> {
         // 視点座標
-        self.translate(0.0, 0.0, -10.0);
+        let projection_matrix = 
+            nalgebra_glm::perspective((self.width / self.height) as f32, 1.0472, 0.1, 200.0); 
+        
+        let center = nalgebra_glm::vec3(0.0, 0.0, 0.0);
+        let up = nalgebra_glm::vec3(0.0, 1.0, 0.0);
+        let eye = nalgebra_glm::vec3(0.0, 0.0, -10.0);
+        let view_matrix = nalgebra_glm::look_at(&eye, &center, &up);
+        let pv = projection_matrix * view_matrix;
 
-        let program = self.program.as_ref();
+        let mut color = Vec::default();
+        for _ in 0..(cube::VERTEX.len() / 3) {
+            color.push(1.0);
+            color.push(1.0);
+            color.push(1.0);
+            color.push(1.0);
+        }
 
-        self.context.use_program(Some(program));
+        // cube
+        buffer::render_buffer(
+            self.context, 
+            self.cube_vertex.as_ref(), 
+            self.position, 
+            3
+        )?;
+        buffer::render_buffer(
+            self.context, 
+            self.cube_normal.as_ref(), 
+            self.normal, 
+            3
+        )?;
+        buffer::render_buffer(
+            self.context, 
+            buffer::vertex_buffer(self.context, color.as_slice()).ok().as_ref(), 
+            self.color, 
+            4
+        )?;
+        self.context
+            .bind_buffer(
+                WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, 
+                self.cube_index.as_ref()
+            );
+
+        let scale = 
+            nalgebra_glm::scale(&nalgebra_glm::identity(), &nalgebra_glm::vec3(100.0, 100.0, 100.0));
+        self.context
+            .uniform_matrix4fv_with_f32_array(self.m.as_ref(), false, scale.as_slice());
+        self.context
+            .uniform_matrix4fv_with_f32_array(self.mvp.as_ref(), false, (pv * scale).as_slice());
+        self.context
+            .uniform3fv_with_f32_array(self.eye.as_ref(), eye.as_slice());
+
+        self.context
+            .active_texture(WebGlRenderingContext::TEXTURE0);
+        self.context
+            .bind_texture(WebGlRenderingContext::TEXTURE_CUBE_MAP, self.cube_texture.as_ref());
+        self.context
+            .uniform1i(self.cube.as_ref(), 0);
+        /*
+        self.context
+            .uniform1i(self.reflection.as_ref(), 0);
+        */
+        self.context.draw_elements_with_i32(
+            WebGlRenderingContext::TRIANGLES,
+            cube::INDEX.len() as i32,
+            WebGlRenderingContext::UNSIGNED_SHORT,
+            0,
+        );
 
         // teapot
-        let teapot_vb = buffer::vertex_buffer(self.context, mesh::VERTEX).ok();
-        let teapot_vb = teapot_vb.as_ref();
+        let mut color = Vec::default();
+        for _ in 0..(teapot::VERTEX.len() / 3) {
+            color.push(1.0);
+            color.push(1.0);
+            color.push(1.0);
+            color.push(1.0);
+        }
+        buffer::render_buffer(
+            self.context, 
+            self.teapot_vertex.as_ref(), 
+            self.position, 
+            3
+        )?;
+        buffer::render_buffer(
+            self.context, 
+            self.teapot_normal.as_ref(), 
+            self.normal, 
+            3
+        )?;
+        buffer::render_buffer(
+            self.context, 
+            buffer::vertex_buffer(self.context, color.as_slice()).ok().as_ref(), 
+            self.color, 
+            4
+        )?;
         self.context
-            .bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, teapot_vb);
-        
-        self.context
-            .enable_vertex_attrib_array(self.position_loc as u32);
+            .bind_buffer(
+                WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, 
+                self.teapot_index.as_ref()
+            );
 
-        self.context.vertex_attrib_pointer_with_i32(
-            self.position_loc as u32,
-            3,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            0,
-            0,
-        );
-
-        let teapot_ib = buffer::index_buffer(self.context, mesh::INDEX).ok();
-        let teapot_ib = teapot_ib.as_ref();
+        let translate = 
+            nalgebra_glm::translate(&nalgebra_glm::identity(), &nalgebra_glm::vec3(0.0, 0.0, 50.0));
+        let rotate = 
+            nalgebra_glm::rotate(&translate, 0.785398, &nalgebra_glm::vec3(-50.0, 0.0, 50.0));
         self.context
-            .bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, teapot_ib);
+            .uniform_matrix4fv_with_f32_array(self.m.as_ref(), false, rotate.as_slice());
+        self.context
+            .uniform_matrix4fv_with_f32_array(self.mvp.as_ref(), false, (pv * rotate).as_slice());
+        /*
+        self.context
+            .uniform1i(self.reflection.as_ref(), 1);
+        */
         self.context.draw_elements_with_i32(
-            WebGl2RenderingContext::TRIANGLES,
-            mesh::INDEX.len() as i32,
-            WebGl2RenderingContext::UNSIGNED_SHORT,
+            WebGlRenderingContext::TRIANGLES,
+            teapot::INDEX.len() as i32,
+            WebGlRenderingContext::UNSIGNED_SHORT,
             0,
         );
 
+        self.context.flush();
+
         self.context
-            .bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, None);
+            .bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, None);
 
         Ok(())
     }
 
-    pub fn translate(&mut self, x: f32, y: f32, z: f32) {
-        let m = self.mv;
-        let v = nalgebra_glm::vec3(x, y, z);
-        let m = nalgebra_glm::translate(&m, &v);
-
-        let _ = std::mem::replace(&mut self.mv, m);
-    }
-
-    pub fn uniform_locations(&mut self, program: &WebGlProgram) -> Result<Vec<WebGlUniformLocation>, JsValue> {
-        let v1 = self
-            .context
-            .get_uniform_location(program, "mMatrix")
-            .ok_or("failed location")?;
-        let v2 = self
-            .context
-            .get_uniform_location(program, "mvpMatrix")
-            .ok_or("failed location")?;
-        let v3 = self
-            .context
-            .get_uniform_location(program, "eyePosition")
-            .ok_or("failed location")?;
-        let v4 = self
-            .context
-            .get_uniform_location(program, "cubeTexture")
-            .ok_or("failed location")?;
-        let v5 = self
-            .context
-            .get_uniform_location(program, "reflection")
-            .ok_or("failed location")?;
-        Ok(vec![v1, v2, v3, v4, v5])
-    }
-
-    pub fn create_texture(&mut self) -> Result<WebGlTexture, JsValue> {
-        let sources = [
-            std::include_bytes!("cube_PX.png"),
-            /*
-            std::include_bytes!("cube_PY.png"),
-            std::include_bytes!("cube_PZ.png"),
-            std::include_bytes!("cube_NX.png"),
-            std::include_bytes!("cube_NY.png"),
-            std::include_bytes!("cube_NZ.png"),
-            */
-        ];
+    pub fn create_texture(context: &'a WebGlRenderingContext) -> Result<WebGlTexture, JsValue> {
+        let source = std::include_bytes!("check.png");
 
         let targets = [
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X,
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_Y,
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_Z,
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_X,
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_Y,
-            WebGl2RenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_Z
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X,
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_Y,
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_Z,
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_X,
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_Y,
+            WebGlRenderingContext::TEXTURE_CUBE_MAP_NEGATIVE_Z
         ];
 
-        let tex = self
-            .context
+        let tex = context
             .create_texture()
             .ok_or("failed create texture")?;
 
-        self
-            .context
-            .bind_texture(WebGl2RenderingContext::TEXTURE_CUBE_MAP, Some(&tex));
+        context
+            .bind_texture(WebGlRenderingContext::TEXTURE_CUBE_MAP, Some(&tex));
        
-        for (i, target) in targets.iter().enumerate() {
-            let pic = sources[i];
+        for target in targets.iter() {
             let img = image::load_from_memory_with_format(
-                pic,
+                source,
                 image::ImageFormat::Png
             ).map_err(|e| e.to_string())?;
-
-            self
-                .context.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            
+            context.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
                     *target, 
                     0, 
-                    WebGl2RenderingContext::RGBA as i32, 
-                    186,
-                    213,
+                    WebGlRenderingContext::RGBA as i32, 
+                    256,
+                    256,
                     0,
-                    WebGl2RenderingContext::RGBA,
-                    WebGl2RenderingContext::UNSIGNED_BYTE,
-                    Some(&img.into_rgba8().into_vec()))?;
+                    WebGlRenderingContext::RGBA,
+                    WebGlRenderingContext::UNSIGNED_BYTE,
+                    Some(&img.into_rgba8().into_vec())
+                )?;
         }
 
-        self
-            .context
-            .generate_mipmap(WebGl2RenderingContext::TEXTURE_CUBE_MAP);
+        context
+            .generate_mipmap(WebGlRenderingContext::TEXTURE_CUBE_MAP);
 
-        self
-            .context
+        context
             .tex_parameteri(
-                WebGl2RenderingContext::TEXTURE_CUBE_MAP,
-                WebGl2RenderingContext::TEXTURE_MIN_FILTER,
-                WebGl2RenderingContext::LINEAR as i32,
+                WebGlRenderingContext::TEXTURE_CUBE_MAP,
+                WebGlRenderingContext::TEXTURE_MIN_FILTER,
+                WebGlRenderingContext::LINEAR as i32,
             );
-        self
-            .context
+        
+        context
             .tex_parameteri(
-                WebGl2RenderingContext::TEXTURE_CUBE_MAP,
-                WebGl2RenderingContext::TEXTURE_MAG_FILTER,
-                WebGl2RenderingContext::LINEAR as i32,
+                WebGlRenderingContext::TEXTURE_CUBE_MAP,
+                WebGlRenderingContext::TEXTURE_MAG_FILTER,
+                WebGlRenderingContext::LINEAR as i32,
             );
-        self
-            .context
+        
+        context
             .tex_parameteri(
-                WebGl2RenderingContext::TEXTURE_CUBE_MAP,
-                WebGl2RenderingContext::TEXTURE_WRAP_S,
-                WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+                WebGlRenderingContext::TEXTURE_CUBE_MAP,
+                WebGlRenderingContext::TEXTURE_WRAP_S,
+                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
             );
-        self
-            .context
+        
+        context
             .tex_parameteri(
-                WebGl2RenderingContext::TEXTURE_CUBE_MAP,
-                WebGl2RenderingContext::TEXTURE_WRAP_T,
-                WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+                WebGlRenderingContext::TEXTURE_CUBE_MAP,
+                WebGlRenderingContext::TEXTURE_WRAP_T,
+                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
             );
 
-        self
-            .context
-            .bind_texture(WebGl2RenderingContext::TEXTURE_CUBE_MAP, None);
+        context
+            .bind_texture(WebGlRenderingContext::TEXTURE_CUBE_MAP, None);
        
         Ok(tex)
     }

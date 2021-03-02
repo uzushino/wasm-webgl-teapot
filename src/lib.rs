@@ -1,10 +1,11 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::WebGl2RenderingContext;
+use web_sys::WebGlRenderingContext;
 
 pub mod buffer;
 pub mod log;
-pub mod mesh;
+pub mod teapot;
+pub mod cube;
 pub mod scene;
 pub mod shader;
 
@@ -17,7 +18,7 @@ pub fn start() -> Result<(), JsValue> {
     let context = canvas
         .get_context("webgl")?
         .unwrap()
-        .dyn_into::<WebGl2RenderingContext>()?;
+        .dyn_into::<WebGlRenderingContext>()?;
 
     let w = canvas.client_width();
     let h = canvas.client_height();
@@ -30,12 +31,13 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
-fn init(width: i32, height: i32, context: &WebGl2RenderingContext) -> Result<(), JsValue> {
+fn init(width: i32, height: i32, context: &WebGlRenderingContext) -> Result<(), JsValue> {
     context.clear_color(0.0, 0.0, 0.0, 1.0);
-    context.enable(WebGl2RenderingContext::DEPTH_TEST);
-    context.depth_func(WebGl2RenderingContext::LEQUAL);
+    context.clear_depth(1.0);
+    context.enable(WebGlRenderingContext::DEPTH_TEST);
+    context.depth_func(WebGlRenderingContext::LEQUAL);
     context
-        .clear(WebGl2RenderingContext::COLOR_BUFFER_BIT | WebGl2RenderingContext::DEPTH_BUFFER_BIT);
+        .clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
 
     let mut scene = scene::Scene::new_with_context(width, height, context)?;
     scene.render()?;

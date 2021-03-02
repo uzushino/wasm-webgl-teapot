@@ -1,23 +1,25 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{WebGlProgram, WebGl2RenderingContext, WebGlShader};
+use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
-pub fn vertex_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, JsValue> {
+pub fn vertex_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, JsValue> {
     let vert_shader = compile_shader(
         &context,
-        WebGl2RenderingContext::VERTEX_SHADER,
+        WebGlRenderingContext::VERTEX_SHADER,
         r#"
-        precision mediump float;
-
-        attribute vec3 aVertexPosition;
-
-        uniform mat4 uPMatrix;
-        uniform mat4 uMVMatrix;
-
-        varying highp vec3 vVertexPosition;
-
-        void main(void) {
-            gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
-            vVertexPosition = aVertexPosition;
+        attribute vec3 aPosition;
+        attribute vec3 aNormal;
+        attribute vec4 aColor;
+        uniform   mat4 uModelMatrix;
+        uniform   mat4 uMVPMatrix;
+        varying   vec3 vPosition;
+        varying   vec3 vNormal;
+        varying   vec4 vColor;
+        
+        void main(void){
+            vPosition   = (uModelMatrix * vec4(aPosition, 1.0)).xyz;
+            vNormal     = (uModelMatrix * vec4(aNormal, 0.0)).xyz;
+            vColor      = aColor;
+            gl_Position = uMVPMatrix * vec4(aPosition, 1.0);
         }
         "#,
     )?;
@@ -25,17 +27,25 @@ pub fn vertex_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, Js
     Ok(vert_shader)
 }
 
-pub fn fragment_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, JsValue> {
+pub fn fragment_shader(context: &WebGlRenderingContext) -> Result<WebGlShader, JsValue> {
     let frag_shader = compile_shader(
         &context,
-        WebGl2RenderingContext::FRAGMENT_SHADER,
+        WebGlRenderingContext::FRAGMENT_SHADER,
         r#"
         precision mediump float;
 
-        varying highp vec3 vVertexPosition;
+        uniform vec3        eyePosition;
+        uniform samplerCube cubeTexture;
+        varying vec3        vPosition;
+        varying vec3        vNormal;
+        varying vec4        vColor;
         
-        void main (void) {
-            gl_FragColor = vec4(1.0, 1.0, 1.0, 0.8);
+        void main(void){
+            vec3 direction = vPosition - eyePosition;
+            vec3 ref       = reflect(direction, vNormal);
+            vec4 envColor  = textureCube(cubeTexture, ref);
+            vec4 destColor = vColor * envColor;
+            gl_FragColor   = destColor;
         }
         "#,
     )?;
@@ -44,7 +54,7 @@ pub fn fragment_shader(context: &WebGl2RenderingContext) -> Result<WebGlShader, 
 }
 
 pub fn create_program(
-    context: &WebGl2RenderingContext,
+    context: &WebGlRenderingContext,
     vert_shader: &WebGlShader,
     frag_shader: &WebGlShader,
 ) -> Result<WebGlProgram, String> {
@@ -57,7 +67,7 @@ pub fn create_program(
     context.link_program(&program);
 
     let check = context
-        .get_program_parameter(&program, WebGl2RenderingContext::LINK_STATUS)
+        .get_program_parameter(&program, WebGlRenderingContext::LINK_STATUS)
         .as_bool()
         .unwrap_or(false);
 
@@ -71,7 +81,7 @@ pub fn create_program(
 }
 
 pub fn compile_shader(
-    context: &WebGl2RenderingContext,
+    context: &WebGlRenderingContext,
     shader_type: u32,
     source: &str,
 ) -> Result<WebGlShader, String> {
@@ -82,7 +92,7 @@ pub fn compile_shader(
     context.compile_shader(&shader);
 
     let check = context
-        .get_shader_parameter(&shader, WebGl2RenderingContext::COMPILE_STATUS)
+        .get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS)
         .as_bool()
         .unwrap_or(false);
 
