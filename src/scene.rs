@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{WebGlBuffer, WebGlRenderingContext, WebGlTexture, WebGlUniformLocation };
+use web_sys::{WebGlBuffer, WebGlRenderingContext, WebGlTexture, WebGlUniformLocation, KeyboardEvent };
+use wasm_bindgen::JsCast;
 
 use crate::buffer;
 use crate::teapot;
@@ -7,6 +8,7 @@ use crate::cube;
 use crate::shader;
 
 pub struct Scene<'a> {
+    window: web_sys::Window,
     context: &'a WebGlRenderingContext,
     width: i32,
     height: i32,
@@ -30,6 +32,13 @@ pub struct Scene<'a> {
     cube_texture: Option<WebGlTexture>,
 }
 
+struct State {
+    x: i32,
+    y: i32,
+}
+
+static mut STATE: Option<State> = None;
+
 impl<'a> Scene<'a> {
     pub fn new_with_context(
         width: i32,
@@ -52,8 +61,28 @@ impl<'a> Scene<'a> {
 
         let cube_texture = Self::create_texture(context).ok();
 
+        unsafe {
+            STATE = Some(State {
+                x: 0,
+                y: 0
+            })
+        }
+        let window = web_sys::window().unwrap();
+        let keydown= Closure::wrap(Box::new(move |e: KeyboardEvent| {
+            unsafe { 
+                STATE.as_mut().map(|mut state| {
+                    state.x += 1;
+                    state
+                });
+            } 
+        }) as Box<dyn FnMut(KeyboardEvent)>);
+        
+        window.set_onkeydown(Some(keydown.as_ref().unchecked_ref()));
+        keydown.forget();
+
         // カメラ
         Ok(Scene {
+            window,
             width,
             height,
 
