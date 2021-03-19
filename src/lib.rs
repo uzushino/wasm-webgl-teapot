@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::WebGlRenderingContext;
+use web_sys::{ WebGlRenderingContext, KeyboardEvent};
 
 pub mod buffer;
 pub mod log;
@@ -28,6 +28,7 @@ pub fn start() -> Result<(), JsValue> {
 
     context.clear_color(0.0, 0.0, 0.0, 1.0);
 
+
     Ok(())
 }
 
@@ -39,7 +40,15 @@ fn init(width: i32, height: i32, context: &WebGlRenderingContext) -> Result<(), 
     context
         .clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
 
+    let window = web_sys::window().unwrap();
     let mut scene = scene::Scene::new_with_context(width, height, context)?;
+    
+    let keydown= Closure::wrap(Box::new(|e: KeyboardEvent| {
+        
+    }) as Box<dyn FnMut(KeyboardEvent)>);
+    window.set_onkeydown(Some(keydown.as_ref().unchecked_ref()));
+    
+    keydown.forget();
     scene.render()?;
 
     Ok(())

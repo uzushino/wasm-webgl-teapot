@@ -23,6 +23,7 @@ features = [
   'Document',
   'Element',
   'HtmlCanvasElement',
+  'KeyboardEvent',
   'WebGlBuffer',
   'WebGlRenderingContext',
   'WebGlUniformLocation',
