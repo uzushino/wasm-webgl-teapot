@@ -69,9 +69,14 @@ impl<'a> Scene<'a> {
         }
         let window = web_sys::window().unwrap();
         let keydown= Closure::wrap(Box::new(move |e: KeyboardEvent| {
+
             unsafe { 
-                STATE.as_mut().map(|mut state| {
-                    state.x += 1;
+                STATE.as_mut().map(move |mut state| {
+                    match e.key_code() {
+                        38 => state.y += 1,
+                        40 => state.y -= 1,
+                        _ => {}
+                    };
                     state
                 });
             } 
